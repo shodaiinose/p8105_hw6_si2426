@@ -8,9 +8,12 @@ date: "2022-11-20"
 library(tidyverse)
 library(purrr)
 library(epiDisplay)
+library(glmnet)
 ```
 
 ## Problem 2
+
+#### Loading and Cleaning Data
 
 ```{r}
 homicide_df = read.csv("./data/homicide-data.csv") %>% 
@@ -22,6 +25,8 @@ homicide_df = read.csv("./data/homicide-data.csv") %>%
   filter(victim_race ==  "White" | victim_race ==  "Black")
 ```
 
+The data was wrangled and cleaned by creating a variable for `city_state` and a binary variable `solved` to identify cases that were closed by an arrest. Several cities were filtered out and only victims of White or Black ethnic backgrounds will be abalyzed. 
+
 ```{r}
 baltimore_homicide = homicide_df %>% 
   filter(city == "Baltimore")
@@ -30,14 +35,23 @@ baltimore_logistic =
   baltimore_homicide %>% 
   glm(solved ~ victim_age + victim_race + victim_sex, data = ., family = binomial()) 
 
-baltimore_logistic %>% 
+baltimore_logistic_df = 
+  baltimore_logistic %>% 
   broom::tidy() %>% 
-  mutate(OR = exp(estimate)) %>%
+  mutate(OR = exp(estimate)) 
+
+baltimore_logistic_table = baltimore_logistic_df %>%
   dplyr::select(term, log_OR = estimate, OR, p.value) %>% 
   knitr::kable(digits = 3)
 
-confint(baltimore_logistic)
+baltimore_logistic_table
 ```
+
+```{r}
+as_tibble(confint(baltimore_logistic)) %>% slice(4) %>% exp()
+```
+
+A 95% confidence interval for the adjusted odds ratio for solving homicides in Baltimore, Maryland in which the victim is male (keeping all other variables fixed) is (0.32, 0.56). This indicates that homicides in which the victim is male are less likely to be solved than cases in which the victim is female in Baltimore, Maryland.
 
 ```{r, message = FALSE}
 cities_logistic = homicide_df %>% 
@@ -45,12 +59,17 @@ cities_logistic = homicide_df %>%
   nest() %>%
   mutate( 
     models = map(data, ~glm(data = .x, solved ~ victim_age + victim_race + victim_sex, family = binomial())),
-    result = map(models, broom::tidy)
-    ) %>%
-  dplyr:: select(-data, -models) %>% 
+    result = map(models, broom::tidy)) %>%
+  dplyr:: select(-data, -models)  %>% 
   unnest(result) %>%
   mutate(OR = exp(estimate)) %>%
-  dplyr:: select(term, log_OR = estimate, OR, p.value)
+  dplyr:: select(term, log_OR = estimate, std_error = std.error, OR, p.value) %>%
+  mutate(lwr = exp(log_OR - 1.96*std_error), upr = exp(log_OR + 1.96*std_error))
+
+cities_logistic =
+  cities_logistic[, c("city_state", "term", "log_OR", "std_error", "OR", 
+                      "lwr", "upr",
+                      "p.value")]
 ```
 
 ```{r}
@@ -61,6 +80,7 @@ victim_sex_logistic = cities_logistic %>%
 
 ggplot(victim_sex_logistic, aes(x = city_state, y = OR)) + 
   geom_point() +
+  geom_errorbar(aes(ymin = lwr, ymax = upr)) +
   labs(x = "City, State", y = "Adjusted Odds Ratio") +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 ```
@@ -72,10 +92,27 @@ birthweight_df = read.csv("./data/birthweight.csv") %>%
   mutate(babysex = as.factor(babysex),
          frace = as.factor(frace),
          malform = as.factor(malform),
-         mfrace = as.factor(mrace))
+         mrace = as.factor(mrace))
 ```
 
+There does not appear to be any missing values in the data. 
 
+```{r}
+sapply(birthweight_df, function(x) sum(is.na(x)))
+```
+
+In order to study the relationship between birthweight and several factors, we will fit a model with all variables and perform a stepwise regression to find an appropriate model.
+
+```{r}
+model = lm(bwt ~., birthweight_df)
+
+step.model =  stepAIC(model, direction = "both", 
+                      trace = FALSE)
+
+summary(step.model)
+```
+
+Running the stepwise regression, we will be studying the relationship between birthweight and the following independent variables: babysex, baby's head circumference, baby's length, mother's weight at delivery, family income, gestational age, mother's height, number of live births prior to this pregnancy, mother's pre-pregnancy weight, and average number of cigarettes smoked per day.
 
 
 
