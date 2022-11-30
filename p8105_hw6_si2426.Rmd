@@ -9,13 +9,15 @@ library(tidyverse)
 library(purrr)
 library(epiDisplay)
 library(glmnet)
+library(modelr)
+library(mgcv)
 ```
 
 ## Problem 2
 
 #### Loading and Cleaning Data
 
-```{r}
+```{r, warning = FALSE}
 homicide_df = read.csv("./data/homicide-data.csv") %>% 
   mutate(city_state = paste(city, state, sep = ", "), 
          solved = ifelse(disposition == "Closed by arrest", 1, 0), victim_age = as.numeric(victim_age), victim_race = fct_relevel(victim_race, "White")) %>%
@@ -87,6 +89,7 @@ ggplot(victim_sex_logistic, aes(x = city_state, y = OR)) +
 
 ## Problem 3
 
+#### Loading and Cleaning Data
 ```{r}
 birthweight_df = read.csv("./data/birthweight.csv") %>%
   mutate(babysex = as.factor(babysex),
@@ -103,18 +106,70 @@ sapply(birthweight_df, function(x) sum(is.na(x)))
 
 In order to study the relationship between birthweight and several factors, we will fit a model with all variables and perform a stepwise regression to find an appropriate model.
 
+#### Fitting a Model
 ```{r}
 model = lm(bwt ~., birthweight_df)
 
 step.model =  stepAIC(model, direction = "both", 
                       trace = FALSE)
 
-summary(step.model)
+step.model %>% 
+  broom::tidy() %>% 
+  dplyr::select(term, estimate, p.value) %>% 
+  knitr::kable(digits = 3)
 ```
 
 Running the stepwise regression, we will be studying the relationship between birthweight and the following independent variables: babysex, baby's head circumference, baby's length, mother's weight at delivery, family income, gestational age, mother's height, number of live births prior to this pregnancy, mother's pre-pregnancy weight, and average number of cigarettes smoked per day.
 
+#### Plotting Residuals
+```{r}
+birthweight_df %>% 
+  add_residuals(step.model) %>% 
+  add_predictions(step.model) %>%
+  ggplot(aes(x = pred, y = resid)) + 
+  geom_point() +
+  geom_hline(yintercept = 0, color = "red") +
+  ggtitle("Residuals vs. Fitted Values") +
+  xlab("Fitted Values") + ylab("Residuals")
+```
 
+Looking at the residuals vs. fitted values plot, it appears that for higher values of birthweight, the residuals are evenly distributed around 0. However, for lower values of birthweight, the residuals tend to be distributed greater than 0.
 
+#### Comparing Models
+
+In order to find the model that best predicts birthweight, we will use cross validation to compare the stepwise model with two other models. One model will look at length at birth and gestational age (main effects) while the other model will look at head circumference, length, sex, and all interactions.
+
+```{r, warning = FALSE}
+cv_df =
+  crossv_mc(birthweight_df, 100) %>% 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble))
+
+cv_df = 
+  cv_df %>% 
+  mutate(
+    step.model  = map(train, ~lm(bwt ~ 
+      babysex + bhead + blength + delwt + fincome + 
+      gaweeks + mheight + mrace + parity + ppwt + smoken, data = .x)),
+    main_effects = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
+    interaction = map(train, ~lm(bwt ~ bhead * blength * babysex, data = .x))) %>%
+  mutate(
+    rmse_step = map2_dbl(step.model, test, ~rmse(model = .x, data = .y)),
+    rmse_main   = map2_dbl(main_effects, test, ~rmse(model = .x, data = .y)),
+    rmse_interaction = map2_dbl(interaction, test, ~rmse(model = .x, data = .y)))
+
+cv_df %>% 
+  dplyr::select(starts_with("rmse")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + geom_violin()
+```
+
+According to the cross validation, it is apparent that the step-wise model has the lowest RMSE value while the main effects model has the highest RMSE. This means that it may be most appropriate to fit the step-wise model to predict birthweight. 
 
 
