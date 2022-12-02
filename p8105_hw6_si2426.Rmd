@@ -2,7 +2,7 @@
 title: "p8105_hw6_si2426"
 output: github_document
 author: "Shodai Inose"
-date: "2022-11-30"
+date: "2022-12-2"
 ---
 
 ```{r, include = FALSE}
@@ -28,8 +28,9 @@ homicide_df = read.csv("./data/homicide-data.csv") %>%
   filter(victim_race ==  "White" | victim_race ==  "Black")
 ```
 
-The data was wrangled and cleaned by creating a variable for `city_state` and a binary variable `solved` to identify cases that were closed by an arrest. Several cities were filtered out and only victims of White or Black ethnic backgrounds will be abalyzed. 
+The data was wrangled and cleaned by creating a variable for `city_state` and a binary variable `solved` to identify cases that were closed by an arrest. Several cities were filtered out and only victims who are categorized as White or Black will be analyzed. 
 
+#### Baltimore, MD Logistic Regression
 ```{r}
 baltimore_homicide = homicide_df %>% 
   filter(city == "Baltimore")
@@ -50,12 +51,15 @@ baltimore_logistic_table = baltimore_logistic_df %>%
 baltimore_logistic_table
 ```
 
+The estimated odds ratio for solving homicides in Baltimore, MD with a male victim, keeping all other variables fixed, is 0.426.
+
 ```{r}
 as_tibble(confint(baltimore_logistic)) %>% slice(4) %>% exp()
 ```
 
-A 95% confidence interval for the adjusted odds ratio for solving homicides in Baltimore, Maryland in which the victim is male (keeping all other variables fixed) is (0.32, 0.56). This indicates that homicides in which the victim is male are less likely to be solved than cases in which the victim is female in Baltimore, Maryland.
+A 95% confidence interval for the adjusted odds ratio for solving homicides in Baltimore, Maryland in which the victim is male (keeping all other variables fixed) is (0.32, 0.56). Since this interval does not contain the value of 1, this indicates that homicides in which the victim is male are less likely to be solved than cases in which the victim is female in Baltimore, Maryland.
 
+#### All Cities
 ```{r, message = FALSE}
 cities_logistic = homicide_df %>% 
   group_by(city_state) %>% 
@@ -88,6 +92,8 @@ ggplot(victim_sex_logistic, aes(x = city_state, y = OR)) +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 ```
 
+According to the plot, Albuquerque, NM has the highest estimated odds ratio while New York, NY has the lowest estimated odds ratio. In a majority of cities, the confidence interval of the odds ratio is between 0 and 1, indicating that in many cities, homicides in which the victim is male are less likely to be solved than those with female victims (keeping all other variables constant). 
+
 ## Problem 3
 
 #### Loading and Cleaning Data
@@ -99,15 +105,17 @@ birthweight_df = read.csv("./data/birthweight.csv") %>%
          mrace = as.factor(mrace))
 ```
 
-There does not appear to be any missing values in the data. 
+The data was cleaned by converting numeric variables such as `babysex`, `frace`, `malform`, and `mrace` to factor variables. 
 
 ```{r}
-sapply(birthweight_df, function(x) sum(is.na(x)))
+sum(is.na(birthweight_df))
 ```
+There are no missing values in the data.
+
+#### Fitting a Model
 
 In order to study the relationship between birthweight and several factors, we will fit a model with all variables and perform a stepwise regression to find an appropriate model.
 
-#### Fitting a Model
 ```{r}
 model = lm(bwt ~., birthweight_df)
 
@@ -141,14 +149,14 @@ Looking at the residuals vs. fitted values plot, it appears that for higher valu
 In order to find the model that best predicts birthweight, we will use cross validation to compare the stepwise model with two other models. One model will look at length at birth and gestational age (main effects) while the other model will look at head circumference, length, sex, and all interactions.
 
 ```{r, warning = FALSE}
-cv_df =
+comparing_models =
   crossv_mc(birthweight_df, 100) %>% 
   mutate(
     train = map(train, as_tibble),
     test = map(test, as_tibble))
 
-cv_df = 
-  cv_df %>% 
+comparing_models = 
+  comparing_models %>% 
   mutate(
     step.model  = map(train, ~lm(bwt ~ 
       babysex + bhead + blength + delwt + fincome + 
@@ -160,7 +168,7 @@ cv_df =
     rmse_main   = map2_dbl(main_effects, test, ~rmse(model = .x, data = .y)),
     rmse_interaction = map2_dbl(interaction, test, ~rmse(model = .x, data = .y)))
 
-cv_df %>% 
+comparing_models %>% 
   dplyr::select(starts_with("rmse")) %>% 
   pivot_longer(
     everything(),
