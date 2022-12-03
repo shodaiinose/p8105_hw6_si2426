@@ -92,7 +92,7 @@ ggplot(victim_sex_logistic, aes(x = city_state, y = OR)) +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 ```
 
-According to the plot, Albuquerque, NM has the highest estimated odds ratio while New York, NY has the lowest estimated odds ratio. In a majority of cities, the confidence interval of the odds ratio is between 0 and 1, indicating that in many cities, homicides in which the victim is male are less likely to be solved than those with female victims (keeping all other variables constant). 
+According to the plot, Albuquerque, NM has the highest estimated odds ratio while New York, NY has the lowest estimated odds ratio. In a majority of cities, the confidence interval of the odds ratio is between 0 and 1, indicating that in many cities, homicides in which the victim is male are less likely to be solved than those with female victims (keeping all other variables constant). It can be noted that cities with higher estimated odds ratios tend to have wider confidence intervals, such as Albuquerque, NM.
 
 ## Problem 3
 
@@ -117,12 +117,12 @@ There are no missing values in the data.
 In order to study the relationship between birthweight and several factors, we will fit a model with all variables and perform a stepwise regression to find an appropriate model.
 
 ```{r}
-model = lm(bwt ~., birthweight_df)
+full_model = lm(bwt ~., birthweight_df)
 
-step.model =  stepAIC(model, direction = "both", 
+step_model =  stepAIC(full_model, direction = "both", 
                       trace = FALSE)
 
-step.model %>% 
+step_model %>% 
   broom::tidy() %>% 
   dplyr::select(term, estimate, p.value) %>% 
   knitr::kable(digits = 3)
@@ -133,8 +133,8 @@ Running the stepwise regression, we will be studying the relationship between bi
 #### Plotting Residuals
 ```{r}
 birthweight_df %>% 
-  add_residuals(step.model) %>% 
-  add_predictions(step.model) %>%
+  add_residuals(step_model) %>% 
+  add_predictions(step_model) %>%
   ggplot(aes(x = pred, y = resid)) + 
   geom_point() +
   geom_hline(yintercept = 0, color = "red") +
@@ -142,13 +142,14 @@ birthweight_df %>%
   xlab("Fitted Values") + ylab("Residuals")
 ```
 
-Looking at the residuals vs. fitted values plot, it appears that for higher values of birthweight, the residuals are evenly distributed around 0. However, for lower values of birthweight, the residuals tend to be distributed greater than 0.
+Looking at the residuals vs. fitted values plot, it appears that for higher values of birthweight, the residuals are evenly distributed around 0. However, for lower values of birthweight, the residuals tend to be distributed greater than 0, indicating possible skew in the data.
 
 #### Comparing Models
 
 In order to find the model that best predicts birthweight, we will use cross validation to compare the stepwise model with two other models. One model will look at length at birth and gestational age (main effects) while the other model will look at head circumference, length, sex, and all interactions.
 
 ```{r, warning = FALSE}
+set.seed(8167)
 comparing_models =
   crossv_mc(birthweight_df, 100) %>% 
   mutate(
